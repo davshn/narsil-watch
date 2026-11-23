@@ -1,0 +1,56 @@
+package tech.davshn.narsilwatch.domain
+
+// How the watch says things, in Narsil's words and colors (overlay.html,
+// dark theme). Pure functions, so the tile, the complication and the app
+// read the same.
+
+object Palette {
+    const val BG = 0xFF16182A.toInt()
+    const val TEXT = 0xFFECEBF3.toInt()
+    const val DIM = 0xFF9A98AD.toInt()
+    const val TRACK = 0xFF2A2D45.toInt()
+    const val ACCENT = 0xFF7C6CF0.toInt()
+}
+
+private val STATUS_COLORS = mapOf(
+    "working" to 0xFF3B8BFF.toInt(),
+    "idle" to 0xFF8A90A6.toInt(),
+    "waiting" to 0xFFF5B400.toInt(),
+    "done" to 0xFF22B573.toInt(),
+    "error" to 0xFFF0435A.toInt(),
+)
+
+fun statusColor(status: String): Int = STATUS_COLORS[status] ?: STATUS_COLORS.getValue("idle")
+
+// A #RRGGBB color as the PC sends it; dim for anything else.
+fun parseColor(hex: String): Int {
+    val digits = hex.removePrefix("#")
+    if (digits.length != 6) return Palette.DIM
+    val rgb = digits.toLongOrNull(16) ?: return Palette.DIM
+    return (0xFF000000L or rgb).toInt()
+}
+
+// The conversations waiting on you: a question, a plan or a permission.
+fun needsYou(sessions: List<Session>): Int = sessions.count { it.status == "waiting" }
+
+// How old the state is: the PC publishes only while you are away.
+fun ageLabel(at: Long, nowSeconds: Long): String {
+    val minutes = (nowSeconds - at).coerceAtLeast(0) / 60
+    return when {
+        minutes < 1 -> "ahora"
+        minutes < 60 -> "hace $minutes min"
+        minutes < 24 * 60 -> "hace ${minutes / 60} h"
+        else -> "hace ${minutes / (24 * 60)} d"
+    }
+}
+
+fun resetLabel(resetsAt: Long?, nowSeconds: Long): String {
+    if (resetsAt == null) return ""
+    if (resetsAt <= nowSeconds) return "reiniciado"
+    val minutes = (resetsAt - nowSeconds) / 60
+    return when {
+        minutes < 60 -> "reinicia en $minutes min"
+        minutes < 24 * 60 -> "reinicia en ${minutes / 60} h ${(minutes % 60).toString().padStart(2, '0')} min"
+        else -> "reinicia en ${minutes / (24 * 60)} d ${(minutes % (24 * 60)) / 60} h"
+    }
+}
