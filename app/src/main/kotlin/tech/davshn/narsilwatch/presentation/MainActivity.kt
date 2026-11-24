@@ -23,12 +23,15 @@ import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -51,6 +54,7 @@ import androidx.wear.compose.material3.ListHeader
 import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
+import java.time.LocalTime
 import kotlinx.coroutines.launch
 import tech.davshn.narsilwatch.R
 import tech.davshn.narsilwatch.data.StatusRepository
@@ -60,37 +64,52 @@ import tech.davshn.narsilwatch.domain.NarsilState
 import tech.davshn.narsilwatch.domain.Palette
 import tech.davshn.narsilwatch.domain.Session
 import tech.davshn.narsilwatch.domain.ageLabel
+import tech.davshn.narsilwatch.domain.isDay
 import tech.davshn.narsilwatch.domain.parseColor
 import tech.davshn.narsilwatch.domain.resetLabel
 import tech.davshn.narsilwatch.domain.statusColor
 import tech.davshn.narsilwatch.sync.Refresh
 
-private val Bg = Color(Palette.BG)
-private val Ink = Color(Palette.TEXT)
-private val Dim = Color(Palette.DIM)
-private val Track = Color(Palette.TRACK)
-private val Accent = Color(Palette.ACCENT)
+// The palette of the time of day, light from 6 to 18 and dark otherwise.
+private val LocalPalette = staticCompositionLocalOf { Palette.NIGHT }
 
-private val NarsilColors = ColorScheme(
-    primary = Accent,
-    onPrimary = Ink,
-    background = Bg,
-    onBackground = Ink,
-    onSurface = Ink,
-    onSurfaceVariant = Dim,
-    surfaceContainer = Track,
+private val Bg: Color @Composable @ReadOnlyComposable get() = Color(LocalPalette.current.bg)
+private val Ink: Color @Composable @ReadOnlyComposable get() = Color(LocalPalette.current.text)
+private val Dim: Color @Composable @ReadOnlyComposable get() = Color(LocalPalette.current.dim)
+private val Track: Color @Composable @ReadOnlyComposable get() = Color(LocalPalette.current.track)
+private val Accent: Color @Composable @ReadOnlyComposable get() = Color(LocalPalette.current.accent)
+
+private fun narsilColors(p: Palette) = ColorScheme(
+    primary = Color(p.accent),
+    onPrimary = Color(p.text),
+    background = Color(p.bg),
+    onBackground = Color(p.text),
+    onSurface = Color(p.text),
+    onSurfaceVariant = Color(p.dim),
+    surfaceContainer = Color(p.track),
 )
 
 class MainActivity : ComponentActivity() {
+    private var isDayNow by mutableStateOf(isDay(LocalTime.now().hour))
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repo = StatusRepository(this)
         setupFrom(intent, repo)
         setContent {
-            MaterialTheme(colorScheme = NarsilColors) {
-                AppScaffold { NarsilScreen(repo) }
+            val palette = if (isDayNow) Palette.DAY else Palette.NIGHT
+            CompositionLocalProvider(LocalPalette provides palette) {
+                MaterialTheme(colorScheme = narsilColors(palette)) {
+                    AppScaffold { NarsilScreen(repo, isDayNow) }
+                }
             }
         }
+    }
+
+    // Back to the app after 6 or 18: turn with the hour.
+    override fun onResume() {
+        super.onResume()
+        isDayNow = isDay(LocalTime.now().hour)
     }
 
     // Setup from the PC, without typing on the watch:
@@ -104,10 +123,10 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun NarsilScreen(repo: StatusRepository) {
+private fun NarsilScreen(repo: StatusRepository, day: Boolean) {
     var isSetup by remember { mutableStateOf(!repo.isConfigured) }
     var state by remember { mutableStateOf(repo.cached()) }
-    var art by remember { mutableStateOf(repo.art()) }
+    var art by remember(day) { mutableStateOf(repo.art(day)) }
     var problem by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -122,7 +141,7 @@ private fun NarsilScreen(repo: StatusRepository) {
                 StatusResult.Empty -> "Aún no hay estado: Narsil lo publica cuando escribes lejos del PC."
             }
             state = repo.cached()
-            art = repo.art()
+            art = repo.art(day)
             isLoading = false
             Refresh.redraw(repo.appContext)
         }

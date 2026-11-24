@@ -4,13 +4,39 @@ package tech.davshn.narsilwatch.domain
 // dark theme). Pure functions, so the tile, the complication and the app
 // read the same.
 
-object Palette {
-    const val BG = 0xFF16182A.toInt()
-    const val TEXT = 0xFFECEBF3.toInt()
-    const val DIM = 0xFF9A98AD.toInt()
-    const val TRACK = 0xFF2A2D45.toInt()
-    const val ACCENT = 0xFF7C6CF0.toInt()
+// Day from 6 to 18, as Narsil for Android and Narsil Skin's auto theme.
+fun isDay(hour: Int): Boolean = hour in 6..17
+
+data class Palette(val bg: Int, val text: Int, val dim: Int, val track: Int, val accent: Int) {
+    companion object {
+        val NIGHT = Palette(
+            bg = 0xFF16182A.toInt(),
+            text = 0xFFECEBF3.toInt(),
+            dim = 0xFF9A98AD.toInt(),
+            track = 0xFF2A2D45.toInt(),
+            accent = 0xFF7C6CF0.toInt(),
+        )
+
+        // Only a step lighter than the night: the watch's OLED screen spends
+        // its battery on every lit pixel.
+        val DAY = Palette(
+            bg = 0xFF2A2D47.toInt(),
+            text = 0xFFF3F2F8.toInt(),
+            dim = 0xFFABA9BE.toInt(),
+            track = 0xFF3E4266.toInt(),
+            accent = 0xFF8A7CF4.toInt(),
+        )
+
+        fun at(hour: Int): Palette = if (isDay(hour)) DAY else NIGHT
+    }
 }
+
+// Narsil's drawing for the time of day: by day the light one (white Narsil).
+// The PC always publishes the dark one.
+fun artVariant(url: String, day: Boolean): String =
+    ART_THEME.replace(url, if (day) "-claro.png" else "-oscuro.png")
+
+private val ART_THEME = Regex("-(claro|oscuro)\\.png$")
 
 private val STATUS_COLORS = mapOf(
     "working" to 0xFF3B8BFF.toInt(),
@@ -25,8 +51,8 @@ fun statusColor(status: String): Int = STATUS_COLORS[status] ?: STATUS_COLORS.ge
 // A #RRGGBB color as the PC sends it; dim for anything else.
 fun parseColor(hex: String): Int {
     val digits = hex.removePrefix("#")
-    if (digits.length != 6) return Palette.DIM
-    val rgb = digits.toLongOrNull(16) ?: return Palette.DIM
+    if (digits.length != 6) return Palette.NIGHT.dim
+    val rgb = digits.toLongOrNull(16) ?: return Palette.NIGHT.dim
     return (0xFF000000L or rgb).toInt()
 }
 

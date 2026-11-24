@@ -16,12 +16,14 @@ import androidx.wear.tiles.RequestBuilders
 import androidx.wear.tiles.TileBuilders
 import androidx.wear.tiles.TileService
 import com.google.common.util.concurrent.ListenableFuture
+import java.time.LocalTime
 import tech.davshn.narsilwatch.R
 import tech.davshn.narsilwatch.data.StatusRepository
 import tech.davshn.narsilwatch.domain.Limit
 import tech.davshn.narsilwatch.domain.NarsilState
 import tech.davshn.narsilwatch.domain.Palette
 import tech.davshn.narsilwatch.domain.ageLabel
+import tech.davshn.narsilwatch.domain.isDay
 import tech.davshn.narsilwatch.domain.needsYou
 import tech.davshn.narsilwatch.domain.parseColor
 import tech.davshn.narsilwatch.domain.statusColor
@@ -46,7 +48,7 @@ class NarsilTileService : TileService() {
 
     override fun onTileResourcesRequest(requestParams: RequestBuilders.ResourcesRequest): ListenableFuture<ResourceBuilders.Resources> =
         SuspendToFutureAdapter.launchFuture {
-            val art = repo.art()
+            val art = repo.art(isDay(hour()))
             val image = if (art != null) {
                 ResourceBuilders.ImageResource.Builder()
                     .setInlineResource(
@@ -71,7 +73,13 @@ class NarsilTileService : TileService() {
                 .build()
         }
 
-    private fun resourcesVersion(): String = repo.art()?.contentHashCode()?.toString() ?: "preview"
+    private fun resourcesVersion(): String = repo.art(isDay(hour()))?.contentHashCode()?.toString() ?: "preview"
+
+    // Light by day, dark by night: the tile is drawn again at least every
+    // STALE_MS, so it turns within that much of 6 and 18.
+    private fun hour(): Int = LocalTime.now().hour
+
+    private val palette: Palette get() = Palette.at(hour())
 
     private fun layout(state: NarsilState?): LayoutElement {
         val fiveHour = state?.limits?.find { it.key == "fiveHour" }
@@ -85,10 +93,10 @@ class NarsilTileService : TileService() {
                     .setHeight(dp(66f))
                     .build(),
             )
-            .addContent(text(limitLine(fiveHour, "5 h"), 13f, fiveHour?.let { parseColor(it.color) } ?: Palette.DIM, bold = true))
-            .addContent(text(limitLine(week, "sem"), 11f, week?.let { parseColor(it.color) } ?: Palette.DIM))
+            .addContent(text(limitLine(fiveHour, "5 h"), 13f, fiveHour?.let { parseColor(it.color) } ?: palette.dim, bold = true))
+            .addContent(text(limitLine(week, "sem"), 11f, week?.let { parseColor(it.color) } ?: palette.dim))
             .addContent(text(fleetLine(state), 11f, fleetColor(state)))
-            .addContent(text(state?.let { ageLabel(it.at, System.currentTimeMillis() / 1000) } ?: "configúrame", 9f, Palette.DIM))
+            .addContent(text(state?.let { ageLabel(it.at, System.currentTimeMillis() / 1000) } ?: "configúrame", 9f, palette.dim))
             .build()
 
         val inner = LayoutElementBuilders.Box.Builder()
@@ -106,7 +114,7 @@ class NarsilTileService : TileService() {
             .setVerticalAlignment(LayoutElementBuilders.VERTICAL_ALIGN_CENTER)
             .setModifiers(
                 ModifiersBuilders.Modifiers.Builder()
-                    .setBackground(ModifiersBuilders.Background.Builder().setColor(argb(Palette.BG)).build())
+                    .setBackground(ModifiersBuilders.Background.Builder().setColor(argb(palette.bg)).build())
                     .setClickable(openApp())
                     .build(),
             )
@@ -121,8 +129,8 @@ class NarsilTileService : TileService() {
         val arc = LayoutElementBuilders.Arc.Builder()
             .setAnchorAngle(degrees(0f))
             .setAnchorType(LayoutElementBuilders.ARC_ANCHOR_START)
-        if (used > 0f) arc.addContent(arcLine(used, thickness, limit?.let { parseColor(it.color) } ?: Palette.DIM))
-        if (used < 360f) arc.addContent(arcLine(360f - used, thickness, Palette.TRACK))
+        if (used > 0f) arc.addContent(arcLine(used, thickness, limit?.let { parseColor(it.color) } ?: palette.dim))
+        if (used < 360f) arc.addContent(arcLine(360f - used, thickness, palette.track))
         return arc.build()
     }
 
@@ -160,7 +168,7 @@ class NarsilTileService : TileService() {
     }
 
     private fun fleetColor(state: NarsilState?): Int =
-        state?.sessions?.firstOrNull()?.let { statusColor(it.status) } ?: Palette.DIM
+        state?.sessions?.firstOrNull()?.let { statusColor(it.status) } ?: palette.dim
 
     private fun openApp() = ModifiersBuilders.Clickable.Builder()
         .setId("open")

@@ -9,13 +9,14 @@ import java.net.URLEncoder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import tech.davshn.narsilwatch.domain.NarsilState
+import tech.davshn.narsilwatch.domain.artVariant
 
 // Where the watch keeps the topic, the key, and the last state it read, so
 // the tile and the complication draw at once, offline too.
 class StatusRepository(context: Context) {
     val appContext: Context = context.applicationContext
     private val prefs = appContext.getSharedPreferences("narsil", Context.MODE_PRIVATE)
-    private val artFile = File(appContext.filesDir, "art.png")
+    private fun artFile(day: Boolean) = File(appContext.filesDir, if (day) "art-claro.png" else "art-oscuro.png")
 
     var topic: String
         get() = prefs.getString(TOPIC, "").orEmpty()
@@ -36,7 +37,9 @@ class StatusRepository(context: Context) {
 
     val checkedAt: Long get() = prefs.getLong(CHECKED_AT, 0)
 
-    fun art(): ByteArray? = artFile.takeIf { it.exists() }?.readBytes()
+    // Narsil's drawing for the time of day; the other one until it arrives.
+    fun art(day: Boolean): ByteArray? =
+        (artFile(day).takeIf { it.exists() } ?: artFile(!day).takeIf { it.exists() })?.readBytes()
 
     // Asks ntfy.sh for the latest state; keeps it when there is one.
     suspend fun refresh(): StatusResult = withContext(Dispatchers.IO) {
@@ -57,16 +60,25 @@ class StatusRepository(context: Context) {
     }
 
     // Narsil's art, only from the repository that publishes it: whoever knows
-    // an unsealed topic could write to it.
+    // an unsealed topic could write to it. Both drawings, dark and light, so
+    // the watch turns at 6 and 18 with no network.
     private fun fetchArt(url: String) {
-        if (!url.startsWith(ART_ORIGIN) || url == prefs.getString(ART_URL, null)) return
-        val bytes = try {
-            get(url, MAX_ART)
-        } catch (_: IOException) {
-            null
-        } ?: return
-        artFile.writeBytes(bytes)
-        prefs.edit().putString(ART_URL, url).apply()
+        if (!url.startsWith(ART_ORIGIN)) return
+        for (day in listOf(false, true)) {
+            val variant = artVariant(url, day)
+            val urlKey = if (day) ART_URL_DAY else ART_URL_NIGHT
+            if (variant == prefs.getString(urlKey, null)) continue
+            val bytes = try {
+                get(variant, MAX_ART)
+            } catch (_: IOException) {
+                null
+            } ?: continue
+            artFile(day).writeBytes(bytes)
+            prefs.edit().putString(urlKey, variant).apply()
+        }
+        // The single drawing older versions kept.
+        File(appContext.filesDir, "art.png").delete()
+        prefs.edit().remove("artUrl").apply()
     }
 
     private fun get(url: String, limit: Int): ByteArray? {
@@ -106,6 +118,7 @@ class StatusRepository(context: Context) {
         const val KEY = "key"
         const val RAW = "raw"
         const val CHECKED_AT = "checkedAt"
-        const val ART_URL = "artUrl"
+        const val ART_URL_NIGHT = "artUrlNight"
+        const val ART_URL_DAY = "artUrlDay"
     }
 }

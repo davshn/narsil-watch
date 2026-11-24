@@ -48,6 +48,9 @@ The app lists every open conversation with its state, the limits with when they 
 | **TERMINADA** (done) | Claude has finished its answer. |
 | **ERROR** | The turn stopped because of an error. |
 
+### Day and night
+Like the other Narsil apps, the watch turns light from 6 to 18 and dark the rest of the day, with Narsil's light drawing (white Narsil) by day. The day palette is only a step lighter than the night one: the watch's OLED screen spends battery on every lit pixel. The app turns when you open it, and the tile within 15 minutes of the hour.
+
 ### Alerts
 Alerts (a question, a finished turn, an error) are not part of this app: [Narsil for Android](https://github.com/davshn/narsil-android) or the [ntfy](https://ntfy.sh) app on your phone already mirror them to the watch.
 
